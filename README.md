@@ -6,7 +6,7 @@ However, ecologists are not happy with this.  For them, the success or failure o
 		
 ## Darwin's viewpoint
 
-![](figures/darwin-tree.png)
+![](figures/darwin_tree.png)
 				
 This is only illustration in <i>On the Origin of Species</i> and it's remarkable in its depth of insight.  The <i>x</i>-axis here represents ecological variation.  "These species are supposed to resemble each other in unequal degrees."  Species A is more similar to species B than it is to species C and so forth.  Although we would expect the real landscape of ecological variation to be substantially more complex, this works to explain the concept.  Species that are close to one another on this axis compete for resources.  If species A becomes common then the growth rate of species B will suffer, but the growth rate of species K may be unaffected.
 		
