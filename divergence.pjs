@@ -1,0 +1,625 @@
+// COALTRACE
+// Copyright 2009 Trevor Bedford
+
+/*	This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
+
+float MAXRAD;
+int TRACEDEPTH;
+int TRACESTEP;
+float PUSHBACK;
+int N;
+float MU;
+float GEN;
+float INDHUE;
+boolean LOOPING;
+boolean MUTATION;
+boolean TRACING;
+boolean STATISTICS;
+boolean HELP;
+boolean GRAYBG;
+boolean SELECTION;
+float BG;
+float OUTLINE;
+float JITTER;
+int XGRID;
+int YGRID;
+float GROWTH;
+float HARVEST;
+float FMOD;
+float MUTSTEP;
+
+Population population;
+Landscape landscape;
+PFont fontN;
+PFont fontI;
+
+void setup() {
+
+	MUTATION = true;
+	TRACING = true;
+	STATISTICS = false;
+	HELP = false;
+	GRAYBG = true;
+	SELECTION = true;
+	LOOPING = true;
+	
+	MAXRAD = 6;
+	TRACEDEPTH = 20; // 20
+	TRACESTEP = 18; // 20
+	PUSHBACK = 0.5; // 0.75
+	XGRID = 40; // 40
+	YGRID = 30; // 30
+	INDHUE = 95;	
+	
+	if (GRAYBG) {
+		BG = 20;
+		OUTLINE = 100;
+	}
+	else {
+		BG = 100;
+		OUTLINE = 20;
+	}
+	
+	N = 50;
+	MU = 0.01;
+	GEN = 15.0;		// 60	// frames per generation
+	JITTER = 20;
+	GROWTH = 0.03;	// 0.0008 for 2d
+	HARVEST = 0.05;	// 0.0005 for 2d
+	FMOD = 3;
+	MUTSTEP = 30;
+	
+	size(600,450);
+//	size(screen.width, screen.height);		
+	frameRate(60);	
+	colorMode(HSB,100);
+	smooth();
+	noStroke();
+	population = new Population();
+	landscape = new Landscape();
+	
+	fontN = loadFont("GillSans-48.vlw");
+	
+}
+
+void draw() {
+	background(0,0,BG);
+	landscape.run();
+	population.run();
+	if (STATISTICS) { stats(); }
+	if (HELP) { help(); }
+}
+
+void help() {
+	
+	fill(0,0,OUTLINE);
+	stroke(0,0,OUTLINE);
+	smooth();
+	textFont(fontN, 14);
+
+	float h = 310;
+	float mod = 20;
+	float startleft = 20;
+	float fromleft = 100;
+	text("CLICK",startleft,h); text("-  add variant",fromleft,h); h += mod;	
+	text("H",startleft,h); text("-  show/hide keyboard commands",fromleft,h); h += mod;
+	text("S",startleft,h); text("-  show/hide statistics",fromleft,h); h += mod;
+	text("T",startleft,h); text("-  show/hide tracing",fromleft,h); h += mod;
+	text("C",startleft,h); text("-  switch between background colors",fromleft,h); h += mod;
+	text("M",startleft,h); text("-  start/stop mutation",fromleft,h); h += mod;
+	text("R",startleft,h); text("-  reset simulation",fromleft,h); h += mod;
+		
+	textFont(fontN, 12);
+	text("Copyright 2011 Trevor Bedford",width-180,20);
+	
+}
+
+void stats() {
+
+	fill(0,0,OUTLINE);
+	stroke(0,0,OUTLINE);
+	textFont(fontN, 16);
+
+	text(N + " variants",10,25);
+	text(population.totalSize() + " individuals",10,45);	
+	text(int(frameRate) + " frames / sec", 10, 65);	
+		
+}
+
+// Add a new individual into the population
+void mousePressed() {
+	Individual ind = new Individual(new PVector(mouseX,mouseY));
+	ind.size += 1;
+	population.addIndividual(ind);
+}
+
+void keyPressed() {
+	if (key == ' ') {
+		if (LOOPING) {
+			LOOPING = false;
+			noLoop();
+		}
+		else if (!LOOPING) {
+			LOOPING = true;
+			loop();
+		}
+  	} 
+  	if (key == 'm') {
+		if (MUTATION) { MUTATION = false; }
+		else if (!MUTATION) { MUTATION = true; }
+  	}   
+  	if (key == 't') {
+		if (TRACING) { TRACING = false; }
+		else if (!TRACING) { 
+			population.resetTrace();
+			TRACING = true; 
+		}
+  	} 
+  	if (key == 's') {
+		if (STATISTICS) { STATISTICS = false; }
+		else if (!STATISTICS) { STATISTICS = true; }
+  	}    
+  	if (key == 'h') {
+		if (HELP) { HELP = false; }
+		else if (!HELP) { HELP = true; }
+  	}      	
+  	if (key == 'r') {
+		population = new Population();
+		landscape = new Landscape();
+  	}    	
+	if (key == 'c') {
+		if (GRAYBG) {
+			GRAYBG = false;
+			BG = 100;
+			OUTLINE = 20;
+		}
+		else if (!GRAYBG) {
+			GRAYBG = true;
+			BG = 20;
+			OUTLINE = 100;
+		}
+  	}   	
+}
+
+class Individual {
+
+	PVector loc;
+	int size;	// count of Individuals of this type
+	float rad;
+	float shade;
+	ArrayList trace;
+
+	Individual(PVector l) {
+		loc = l.get();
+    	size = 10;
+    	rad = 0.001;
+    	shade = random(0,100);	
+    	trace = new ArrayList();
+    	for (int i = 0; i < TRACEDEPTH; i++) {
+    		PVector tl = new PVector(loc.x,loc.y,shade);
+    		trace.add(tl);
+    	}
+	}
+	
+	Individual(PVector l, Float h, ArrayList array) {
+		loc = l.get();
+    	size = 1;
+    	rad = 0.001;
+    	shade = h;
+    	trace = new ArrayList();
+    	for (int i = 0; i < array.size(); i++) {
+    		PVector tl = (PVector) array.get(i);
+    		float x = tl.x;
+    		float y = tl.y;
+    		float z = tl.z;
+    		trace.add(new PVector(x,y,z));
+    	}
+	}	
+    
+	void update() {			
+		if (rad < size) {
+			rad += 0.1;
+		}
+		if (rad > size) {
+			rad -= 0.1;
+		}		
+	}
+		
+	void extendTrace() {
+    	PVector tl = new PVector(loc.x,loc.y,shade);
+    	trace.add(tl);
+    	trace.remove(0);
+	}
+	
+	void resetTrace() {
+	    trace = new ArrayList();
+    	for (int i = 0; i < TRACEDEPTH; i++) {
+    		PVector tl = new PVector(loc.x,loc.y,shade);
+    		trace.add(tl);
+    	}
+	}
+	
+	void mutate() {
+//		hue = hue + random(-0.5*JITTER,0.5*JITTER);
+//		if (hue < 0) { hue = 100 + hue; }
+//		if (hue > 100) { hue = hue - 100; }
+		colorMode(HSB,100);
+		color col = color(shade,90,100);
+		float mod = 30;
+		float r = constrain(red(col) + random(-mod,mod), 0, 100);
+		float g = constrain(green(col) + random(-mod,mod), 0, 100);
+		float b = constrain(blue(col) + random(-mod,mod), 0, 100);		
+		colorMode(RGB,100);	
+		col = color(r, g, b);	
+		shade = hue(col);
+		colorMode(HSB,100);		
+
+		loc.x = loc.x + random(-MUTSTEP,MUTSTEP);
+		loc.y = loc.y + random(-MUTSTEP,MUTSTEP);
+		extendTrace();
+	}
+  
+	void display() {
+    	if (TRACING) { displayTrace(); }
+		displayInd();
+  	}
+  	
+  	void displayTrace() {
+  	    // draw tail on each individual
+  	    // this is counting down from the tail of the trace
+    	float tempx = loc.x;
+    	float tempy = loc.y;
+    	float temph = shade;
+    	for (int i = TRACEDEPTH - 1; i > 0; i--) {
+   			PVector tl = (PVector) trace.get(i);
+ 			stroke(tl.z,90,100);
+    		line(tempx, tempy, tl.x, tl.y);
+    		tempx = tl.x;
+    		tempy = tl.y;
+    	}
+  	}
+  	
+  	void displayInd() {
+  	    float r = 2*sqrt(rad);
+		fill(shade,90,100); // 223,227,197
+    	stroke(0,0,OUTLINE);
+    	ellipse(loc.x, loc.y, r*2, r*2);
+  	}
+  	
+}
+
+// The Population (a list of Individual objects)
+class Population {
+  
+  	ArrayList pop; // An arraylist for all the individuals
+
+  	Population() {
+    	pop = new ArrayList(); 
+  	}
+
+	void run() {
+		
+		die();
+		replicate();
+		update();
+		exclusion();
+		cleanup();
+		display();
+		updateN();
+		
+	}
+	
+	void updateN() {
+		N = pop.size();
+	}
+	
+	int size() {
+		return pop.size();
+	}
+	
+	int totalSize() {
+		int s = 0;
+		for (int i = 0; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);
+			s += ind.size;
+		}
+		return s;
+	}
+
+	void addIndividual(Individual ind) {
+		pop.add(ind);
+	}
+
+	// step through full population and sometimes replicate
+	void replicate() {
+		if (pop.size() > 0) {
+			for (int i = 0; i < pop.size(); i++) {
+			
+				Individual ind = (Individual) pop.get(i);  
+				
+				// calculate competition with other members in the population
+				float fitness = FMOD;
+				
+				if (SELECTION) {
+					fitness = FMOD*ind.size*landscape.locationValue(ind.loc.x,ind.loc.y);
+				}
+				
+				// replicate if conditions are good
+				if (size() < 100) {
+					if (random(0,1) < (fitness / (float)GEN)) {
+						
+						if (random(0,1) < MU && MUTATION) {
+							Individual jnd = new Individual(ind.loc, ind.shade, ind.trace);
+							jnd.mutate();
+							pop.add(jnd);
+						}
+						else {
+							ind.size++;
+						}
+						
+					}
+				}
+				
+			}
+			
+		}
+		
+	}
+	
+	// step through full population and sometimes die
+	void die() {					
+
+		for (int i = 0; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i); 	
+			if (random(0,1) < (ind.size / (float)GEN)) {
+				ind.size--;
+			}
+		}
+
+	}
+	
+	void cleanup() {
+		for (int i = 0; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);  
+			if (ind.size <= 0) { 
+				pop.remove(i);
+				i = 0;
+			}
+		}
+	}
+
+	void update() {
+		for (int i = 0; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);  
+			ind.update(); 
+		}
+	}
+	
+	void resetTrace() {
+		for (int i = 0; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);  
+			ind.resetTrace(); 
+		}
+	}
+	
+	void display() {
+		if (TRACING) {
+			for (int i = 0; i < pop.size(); i++) {
+				Individual ind = (Individual) pop.get(i);  
+				ind.displayTrace(); 
+			}
+		}
+		for (int i = 0; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);  
+			ind.displayInd(); 
+		}
+	}
+	
+	void exclusion() {
+		
+		for (int i = 0 ; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);
+			float r = 4*sqrt(ind.rad);
+			ind.loc.x = constrain(ind.loc.x, r, width - r);
+			ind.loc.y = constrain(ind.loc.y, r, height - r);			
+		}
+		
+  	}	
+  	 	
+  	// count individuals within specified bounds
+  	int count(float xmin, float xmax, float ymin, float ymax) {
+  	
+  		int c = 0;
+		for (int i = 0 ; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);
+			if (ind.loc.x > xmin && ind.loc.x < xmax && ind.loc.y > ymin && ind.loc.y < ymax) {
+				c += ind.size;
+			}
+		}  	
+		return c;
+  	
+  	}
+  	
+  	// count individuals within specified bounds
+  	float cumulativeDistance(float x, float y) {
+  	
+  	  	float total = 0;
+  		PVector vec = new PVector(x, y);
+  		
+		for (int i = 0 ; i < pop.size(); i++) {
+			Individual ind = (Individual) pop.get(i);
+			float dist = PVector.dist(ind.loc, vec);
+			float effect = 0.02 * exp(-0.02*dist);
+			effect *= ind.size;
+			total += effect;
+		}  	
+		
+		return total;
+  	
+  	}  	
+	
+}
+
+// The Landscape (a grid of resource elements)
+class Landscape {
+
+// need a 2d array of resource counts
+// using a 1d ArrayList that stripes across the grid
+	ArrayList resources;
+	
+	Landscape() {
+	
+		resources = new ArrayList(); 
+		for (int i=0; i<XGRID; i++) {
+			for (int j=0; j<YGRID; j++) {
+			
+				resources.add(new Resource());
+			
+			}
+		}
+
+	}	
+	
+	void run() {
+		harvest();
+		update();
+		drawGrid();
+	}
+	
+	void drawGrid() {
+	
+		float gridwidth = width / (float) XGRID;
+		float gridheight = height / (float) YGRID;	
+		noStroke();
+		rectMode(CORNER);
+				
+		int index = 0;
+		for (int i=0; i<XGRID; i++) {
+			for (int j=0; j<YGRID; j++) {
+			
+				Resource re = (Resource) resources.get(index);
+				float val = re.getShade();
+				if (GRAYBG) { fill(0,0,BG+80-80*val); }
+				else { fill(0,0,BG-50*val); }	
+				
+				rect(i*gridwidth,j*gridheight,gridwidth,gridheight);
+				index++;
+				
+			}
+		}
+			
+	}
+	
+	// go through resources and harvest
+	void harvest() {
+
+		float gridwidth = width / (float) XGRID;
+		float gridheight = height / (float) YGRID;
+	
+		int index = 0;
+		for (int i=0; i<XGRID; i++) {
+			for (int j=0; j<YGRID; j++) {
+					
+				// limits of this resource
+				float xmin = i*gridwidth;
+				float xmax = (i+1)*gridwidth;
+				float x = (xmin + xmax) / 2;
+				float ymin = j*gridheight;
+				float ymax = (j+1)*gridheight;
+				float y = (ymin + ymax) / 2;
+			
+				// count individuals within these limits
+				float sim = population.cumulativeDistance(x, y);
+			
+				// decrement resource based on this count
+				Resource re = (Resource) resources.get(index);	
+				re.setValue(1-sim);
+				index++;
+			
+			}
+		}	
+	
+	}
+	
+	// go through resources and harvest
+	void update() {
+		for (int i = 0; i < resources.size(); i++) {
+			Resource ir = (Resource) resources.get(i);  
+			ir.update(); 
+		}
+	}
+	
+	// returns the resource value for the resource enclosing x,y
+	float locationValue(float x, float y) {
+	
+		float gridwidth = width / (float) XGRID;
+		float gridheight = height / (float) YGRID;	
+
+		float val = 0;
+		int index = 0;
+		for (int i=0; i<XGRID; i++) {
+			for (int j=0; j<YGRID; j++) {
+					
+				// limits of this resource
+				float xmin = i*gridwidth;
+				float xmax = (i+1)*gridwidth;
+				float ymin = j*gridheight;
+				float ymax = (j+1)*gridheight;				
+			
+				// does x,y lie within these limits
+				if (x > xmin && x < xmax && y > ymin && y < ymax) {
+					Resource re = (Resource) resources.get(index);	
+					val = re.getValue();
+				}
+				
+				index++;
+			
+			}
+		}
+		
+		return val;
+	
+	}
+
+}
+
+class Resource {
+
+	float value;
+	float shade;
+	
+	Resource() {
+		value = 1.0;
+		shade = 1.0;
+	}
+	
+	float getValue() {
+		return value;
+	}
+	
+	float getShade() {
+		return shade;
+	}		
+	void setValue(float val) {
+		value = val;	
+	}
+	
+	void update() {
+		if (shade < value) { shade += 0.005; }
+		if (shade > value) { shade -= 0.005; }	
+		if (value < 0) { value = 0.0; }
+		if (value > 1) { value = 1.0; }			
+	}
+
+}
